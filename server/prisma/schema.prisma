@@ -1,0 +1,531 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =====================================================================
+// USUARIOS
+// =====================================================================
+
+/// Sin login todavía: la app genera un UUID por dispositivo, lo guarda en
+/// SecureStore y lo manda en el header `x-user-id`. El backend hace upsert.
+/// Cuando se sume autenticación, el `id` se conserva: solo se agrega la
+/// credencial (email + hash, o el id del proveedor) sobre este mismo usuario.
+model User {
+  id                 String     @id @default(uuid(7)) @db.Uuid
+  email              String?    @unique
+  name               String?
+  timezone           String     @default("America/Argentina/Buenos_Aires")
+  weightUnit         WeightUnit @default(KG)
+  heightCm           Float?
+  birthDate          DateTime?  @db.Date
+  dailyKcalTarget    Int?
+  dailyProteinTarget Int?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  healthImports    HealthImport[]
+  healthSamples    HealthSample[]
+  workouts         Workout[]
+  dailySummaries   DailyHealthSummary[]
+  programs         Program[]
+  trainingSessions TrainingSession[]
+  meals            Meal[]
+  createdExercises Exercise[]
+}
+
+enum WeightUnit {
+  KG
+  LB
+}
+
+// =====================================================================
+// SALUD (Apple Health)
+// =====================================================================
+//
+// Modelo híbrido: lo crudo (FC minuto a minuto, pasos por intervalo, etapas
+// de sueño) se queda en el teléfono / HealthKit. Al servidor sube solo:
+//   1. DailyHealthSummary → una fila por usuario y día. Tabla principal.
+//   2. Workout            → cada entrenamiento que registró el reloj.
+//   3. HealthSample       → métricas puntuales de pocas filas (peso, HRV, FC reposo).
+//
+// Hay UNA ruta de ingesta (ej. POST /health/sync) que recibe ese payload, y
+// dos productores que la alimentan:
+//   - hoy: el usuario sube export.xml, el servidor lo parsea en streaming,
+//     acumula por día y descarta lo crudo.
+//   - después: la app le pide a HealthKit las estadísticas por día (ya da
+//     sumas y promedios) y manda el mismo payload.
+// Para el resto del backend y para el agente no hay diferencia.
+
+/// Registro de cada carga (export.xml subido, o sync desde HealthKit).
+/// Un XML nuevo reemplaza al anterior: se borra el HealthImport viejo
+/// (cascade → sus HealthSample) y los días y workouts se upsertean por
+/// clave natural, así no se rompe el vínculo Workout ↔ TrainingSession.
+/// El canal HEALTHKIT es incremental: upsertea solo los días que cambiaron.
+model HealthImport {
+  id               String              @id @default(uuid(7)) @db.Uuid
+  userId           String              @db.Uuid
+  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel          HealthImportChannel
+  status           ImportStatus        @default(PENDING)
+  fileName         String?
+  startedAt        DateTime            @default(now())
+  finishedAt       DateTime?
+  rangeFrom        DateTime?           @db.Date
+  rangeTo          DateTime?           @db.Date
+  daysUpserted     Int                 @default(0)
+  workoutsUpserted Int                 @default(0)
+  samplesInserted  Int                 @default(0)
+  error            String?
+
+  days     DailyHealthSummary[]
+  workouts Workout[]
+  samples  HealthSample[]
+}
+
+enum HealthImportChannel {
+  APPLE_HEALTH_XML /// export.xml subido a mano
+  HEALTHKIT /// a futuro: sync directo desde el iPhone
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+}
+
+/// Una fila por usuario y día (en la timezone del usuario). Es lo que leen
+/// el dashboard y las tools del agente. La calcula el productor (importer
+/// del XML o la app con HealthKit); el servidor solo la upsertea.
+model DailyHealthSummary {
+  id       String        @id @default(uuid(7)) @db.Uuid
+  userId   String        @db.Uuid
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importId String?       @db.Uuid
+  import   HealthImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  date     DateTime      @db.Date
+
+  // Actividad
+  steps                Int?
+  distanceKm           Float?
+  flightsClimbed       Int?
+  activeEnergyKcal     Float?
+  basalEnergyKcal      Float?
+  activeEnergyGoalKcal Float? /// del <ActivitySummary> (anillo Moverse)
+  exerciseMin          Int?
+  standHours           Int?
+
+  // Cardio (agregados del día; el crudo no sube)
+  restingHeartRate Int?
+  avgHeartRate     Float?
+  minHeartRate     Int?
+  maxHeartRate     Int?
+  hrvSdnnMs        Float?
+  respiratoryRate  Float?
+  oxygenSaturation Float? /// 0..1
+
+  // Sueño de la noche que termina en este día (minutos por etapa)
+  sleepStartedAt DateTime?
+  sleepEndedAt   DateTime?
+  sleepInBedMin  Int?
+  sleepAsleepMin Int? /// core + deep + rem
+  sleepCoreMin   Int?
+  sleepDeepMin   Int?
+  sleepRemMin    Int?
+  sleepAwakeMin  Int?
+
+  // Composición corporal (última medición del día)
+  weightKg       Float?
+  bodyFatPct     Float? /// 0..1
+  leanBodyMassKg Float?
+
+  // Entrenamientos del reloj ese día
+  workoutCount Int @default(0)
+  workoutMin   Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, date])
+}
+
+enum WorkoutType {
+  TRADITIONAL_STRENGTH_TRAINING
+  FUNCTIONAL_STRENGTH_TRAINING
+  RUNNING
+  WALKING
+  CYCLING
+  STAIR_CLIMBING
+  SWIMMING
+  HIIT
+  OTHER
+}
+
+/// Un <Workout> de Apple Health: el reloj registró una actividad.
+/// Se vincula 1:1 (opcional) con la TrainingSession anotada del gym.
+/// Se upsertea por (userId, sourceName, startedAt) en cada carga.
+model Workout {
+  id               String        @id @default(uuid(7)) @db.Uuid
+  userId           String        @db.Uuid
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importId         String?       @db.Uuid
+  import           HealthImport? @relation(fields: [importId], references: [id], onDelete: SetNull)
+  type             WorkoutType
+  /// Identificador original de Apple, por si cae en OTHER.
+  activityTypeRaw  String?
+  startedAt        DateTime
+  endedAt          DateTime
+  durationMin      Float
+  activeEnergyKcal Float?
+  distanceKm       Float?
+  avgHeartRate     Float?
+  maxHeartRate     Int?
+  isIndoor         Boolean?
+  sourceName       String
+  /// UUID del workout en HealthKit (solo con sync directo).
+  externalId       String?
+
+  trainingSession TrainingSession?
+
+  @@unique([userId, sourceName, startedAt])
+  @@index([userId, startedAt])
+}
+
+/// Solo métricas puntuales, de pocas filas (en tu export: ~110 pesos,
+/// ~870 HRV, ~200 FC en reposo). Lo continuo (FC, pasos, energía, SpO2,
+/// respiración, sueño) NUNCA sube como sample: va agregado por día.
+/// Unidad canónica en el comentario; el importer convierte (lb → kg, etc.).
+enum HealthMetric {
+  BODY_MASS /// kg
+  BODY_FAT_PERCENTAGE /// 0..1
+  LEAN_BODY_MASS /// kg
+  BODY_MASS_INDEX
+  HEIGHT /// cm
+  RESTING_HEART_RATE /// latidos/min
+  HEART_RATE_VARIABILITY_SDNN /// ms
+  VO2_MAX /// mL/kg/min
+}
+
+/// Una medición puntual. Sirve para graficar con más detalle que un día
+/// (varias pesadas el mismo día, HRV por noche) y para cargas manuales.
+model HealthSample {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  importId   String?       @db.Uuid
+  import     HealthImport? @relation(fields: [importId], references: [id], onDelete: Cascade)
+  metric     HealthMetric
+  value      Float
+  measuredAt DateTime
+  /// Dispositivo/app de origen tal cual lo reporta Apple: "Zepp", "Nacho's iPhone",
+  /// "Xiaomi Home", "Health". Para cargas desde la app: "manual".
+  sourceName String
+  /// UUID del sample en HealthKit (solo con sync directo).
+  externalId String?
+
+  /// Clave natural: re-importar el mismo export no duplica.
+  @@unique([userId, metric, sourceName, measuredAt])
+  @@index([userId, metric, measuredAt])
+}
+
+// =====================================================================
+// ENTRENAMIENTO (rutina del gym)
+// =====================================================================
+
+enum MuscleGroup {
+  CHEST
+  BACK
+  SHOULDERS
+  BICEPS
+  TRICEPS
+  FOREARMS
+  QUADS
+  HAMSTRINGS
+  GLUTES
+  CALVES
+  ADDUCTORS
+  ABDUCTORS
+  ABS
+  LOWER_BACK
+  FULL_BODY
+  OTHER
+}
+
+enum Equipment {
+  BARBELL
+  DUMBBELL
+  EZ_BAR
+  CABLE
+  MACHINE
+  BODYWEIGHT
+  KETTLEBELL
+  OTHER
+}
+
+/// Catálogo compartido de ejercicios. `createdById` null = viene de sistema.
+/// `aliases` es para matchear los nombres del excel ("Pecho plano mancu.",
+/// "Pecho Plano(Heavy)") contra un mismo ejercicio.
+model Exercise {
+  id           String       @id @default(uuid(7)) @db.Uuid
+  name         String       @unique
+  muscleGroup  MuscleGroup?
+  equipment    Equipment?
+  isBodyweight Boolean      @default(false)
+  aliases      String[]     @default([])
+  createdById  String?      @db.Uuid
+  createdBy    User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+
+  programExercises ProgramExercise[]
+  alternativeFor   ProgramExerciseAlternative[]
+  sessionExercises SessionExercise[]
+}
+
+/// El programa completo (el excel = "The Essentials Program pt2").
+/// Cada usuario arma los suyos.
+model Program {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  /// Notas generales, ej. el protocolo de warm-up (60% / 50%→70% / 45%→65%→85%).
+  description String?
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  blocks ProgramBlock[]
+
+  @@unique([userId, name])
+}
+
+/// Una hoja del excel = un bloque/mesociclo de ~4 semanas ("Bloque 1 (ENE-FEB)").
+model ProgramBlock {
+  id        String    @id @default(uuid(7)) @db.Uuid
+  programId String    @db.Uuid
+  program   Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  name      String
+  order     Int
+  weekCount Int       @default(4)
+  startDate DateTime? @db.Date
+  endDate   DateTime? @db.Date
+
+  days ProgramDay[]
+
+  @@unique([programId, order])
+}
+
+/// "Día 1: Upper (Parte Superior)". Pertenece al bloque porque cada bloque
+/// cambia los ejercicios de cada día.
+model ProgramDay {
+  id      String       @id @default(uuid(7)) @db.Uuid
+  blockId String       @db.Uuid
+  block   ProgramBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  name    String /// "Upper", "Lower", "Push", "Pull", "Legs"
+  order   Int /// 1..5
+
+  exercises ProgramExercise[]
+  sessions  TrainingSession[]
+
+  @@unique([blockId, order])
+}
+
+/// Una fila del excel: el ejercicio prescripto con su objetivo parseado.
+/// "2x10-12 (RPE 9-10)" → targetSets 2, targetRepsMin 10, targetRepsMax 12, rpeMin 9, rpeMax 10.
+/// "1x AMRAP (RPE 10)"  → targetSets 1, isAmrap, rpeMin 10, rpeMax 10.
+/// "2x12-15 (Dropset)"  → targetSets 2, 12-15, isDropset.
+model ProgramExercise {
+  id            String     @id @default(uuid(7)) @db.Uuid
+  dayId         String     @db.Uuid
+  day           ProgramDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  exerciseId    String     @db.Uuid
+  exercise      Exercise   @relation(fields: [exerciseId], references: [id])
+  order         Int
+  /// "Heavy" / "Back-off": mismo ejercicio, dos filas con esquema distinto.
+  variant       String?
+  /// "A1:" / "A2:" → supersetGroup "A", supersetOrder 1 / 2.
+  supersetGroup String?
+  supersetOrder Int?
+
+  warmupSetsMin Int?
+  warmupSetsMax Int?
+  targetSets    Int?
+  targetRepsMin Int?
+  targetRepsMax Int?
+  isAmrap       Boolean @default(false)
+  isDropset     Boolean @default(false)
+  rpeMin        Float?
+  rpeMax        Float?
+  /// Texto original del objetivo, por si el parser no lo entendió.
+  targetRaw     String?
+  /// Cues del coach (columna Notas): "Elbows down and in...".
+  notes         String?
+
+  alternatives     ProgramExerciseAlternative[]
+  sessionExercises SessionExercise[]
+
+  @@unique([dayId, order])
+}
+
+/// Columnas R1 / R2 del excel: reemplazos sugeridos para un ejercicio del programa.
+model ProgramExerciseAlternative {
+  programExerciseId String          @db.Uuid
+  programExercise   ProgramExercise @relation(fields: [programExerciseId], references: [id], onDelete: Cascade)
+  exerciseId        String          @db.Uuid
+  exercise          Exercise        @relation(fields: [exerciseId], references: [id], onDelete: Cascade)
+  rank              Int /// 1 = R1, 2 = R2
+
+  @@id([programExerciseId, exerciseId])
+  @@unique([programExerciseId, rank])
+}
+
+/// Una ida al gym. Normalmente es "ProgramDay X, semana N", pero puede ser
+/// libre (programDayId null), como la sesión de "Buzios".
+/// El excel se re-importa cada tanto: `importKey` ("bloque-1/dia-1/sem-2")
+/// identifica la sesión entre imports y permite upsert en vez de duplicar.
+/// Sesiones cargadas desde la app tienen importKey null.
+model TrainingSession {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  userId          String      @db.Uuid
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  programDayId    String?     @db.Uuid
+  programDay      ProgramDay? @relation(fields: [programDayId], references: [id], onDelete: SetNull)
+  /// 0 = columna "Bench" (semana base), 1..4 = Sem 1..4.
+  weekNumber      Int?
+  performedAt     DateTime
+  /// El excel no tiene fechas: el importer la estima (inicio de bloque + semana)
+  /// o la toma del Workout de Apple Health que matchee.
+  dateIsEstimated Boolean     @default(false)
+  title           String? /// "Buzios"
+  durationMin     Int?
+  notes           String?
+  workoutId       String?     @unique @db.Uuid
+  workout         Workout?    @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  importKey       String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  exercises SessionExercise[]
+
+  @@unique([userId, importKey])
+  @@index([userId, performedAt])
+}
+
+/// Un ejercicio hecho dentro de una sesión. `programExerciseId` null cuando
+/// se sustituyó el ejercicio o la sesión es libre.
+model SessionExercise {
+  id                String           @id @default(uuid(7)) @db.Uuid
+  sessionId         String           @db.Uuid
+  session           TrainingSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  exerciseId        String           @db.Uuid
+  exercise          Exercise         @relation(fields: [exerciseId], references: [id])
+  programExerciseId String?          @db.Uuid
+  programExercise   ProgramExercise? @relation(fields: [programExerciseId], references: [id], onDelete: SetNull)
+  order             Int
+  /// "ojo tecnica", "duele tobillo", "*empece a sentirme mareado".
+  notes             String?
+  /// Celda original del excel ("115-85 (12-6)"), para auditar el parseo.
+  rawLog            String?
+
+  sets ExerciseSet[]
+
+  @@unique([sessionId, order])
+}
+
+/// Una serie efectiva. Notación del excel: `peso (reps) (rpe)`.
+///   "25 (5) (10)"            → 1 fila: setNumber 1, 25 kg, 5 reps, RPE 10
+///   "16 (12,10) (9,10)"      → 2 filas: set 1 = 16/12/9, set 2 = 16/10/10
+///   "115-85 (12-6)"          → dropset: set 1 dropIndex 0 = 115/12, dropIndex 1 = 85/6
+///   "-25, -40 (6,8)"         → pull-up asistida: weightKg negativo
+///   "0 (10, 8)"              → peso corporal: weightKg 0
+///   "28.75 + c", "3.75+2c"   → cada "c" suma 0.5 kg: 29.25, 4.75
+///   "115lbs (12,12)"         → se convierte a kg al importar
+/// Los números sueltos al pie de cada día en el excel son lockers: se ignoran.
+model ExerciseSet {
+  id                String          @id @default(uuid(7)) @db.Uuid
+  sessionExerciseId String          @db.Uuid
+  sessionExercise   SessionExercise @relation(fields: [sessionExerciseId], references: [id], onDelete: Cascade)
+  setNumber         Int
+  /// 0 = serie normal; 1, 2... = cada bajada de peso dentro de un dropset.
+  dropIndex         Int             @default(0)
+  isWarmup          Boolean         @default(false)
+  /// Carga externa normalizada a kg (lb se convierte al importar).
+  weightKg          Float?
+  /// Float porque anotás medias reps (7.5, 8.5).
+  reps              Float?
+  rpe               Float?
+
+  @@unique([sessionExerciseId, setNumber, dropIndex])
+}
+
+// =====================================================================
+// COMIDA
+// =====================================================================
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
+
+enum MealSource {
+  MANUAL
+  AI_IMAGE /// la IA la completó a partir de una foto
+  AI_TEXT /// la IA la completó a partir de una descripción escrita
+}
+
+/// Una comida. Los totales viven acá y son lo que el usuario ve y edita;
+/// la IA los propone y el usuario confirma.
+model Meal {
+  id       String    @id @default(uuid(7)) @db.Uuid
+  userId   String    @db.Uuid
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eatenAt  DateTime
+  mealType MealType?
+  name     String
+  imageUrl String? /// URL de la foto (donde termine alojada)
+
+  calories Float?
+  proteinG Float?
+  carbsG   Float?
+  fiberG   Float?
+  fatG     Float?
+
+  source       MealSource @default(MANUAL)
+  aiModel      String?
+  aiConfidence Float? /// 0..1, lo que reporte el modelo
+  aiRaw        Json? /// respuesta completa del modelo, por si hay que auditar
+
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items MealItem[]
+
+  @@index([userId, eatenAt])
+}
+
+/// Desglose opcional de una comida ("milanesa", "puré"). Lo devuelve
+/// naturalmente la IA al analizar una foto; la app funciona sin esto.
+model MealItem {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  mealId   String  @db.Uuid
+  meal     Meal    @relation(fields: [mealId], references: [id], onDelete: Cascade)
+  order    Int
+  name     String
+  quantity Float?
+  unit     String? /// "g", "unidad", "taza"
+  calories Float?
+  proteinG Float?
+  carbsG   Float?
+  fiberG   Float?
+  fatG     Float?
+
+  @@unique([mealId, order])
+}
