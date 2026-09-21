@@ -8,6 +8,12 @@ importers:
 
   .:
     dependencies:
+      '@expo-google-fonts/lora':
+        specifier: ^0.4.2
+        version: 0.4.2
+      '@expo-google-fonts/public-sans':
+        specifier: ^0.4.2
+        version: 0.4.2
       '@rn-primitives/portal':
         specifier: ~1.4.0
         version: 1.4.0(@types/react@19.2.18)(react-native-web@0.21.2(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -26,6 +32,9 @@ importers:
       expo-constants:
         specifier: ~56.0.19
         version: 56.0.26(expo@56.0.22)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))
+      expo-font:
+        specifier: ~56.0.7
+        version: 56.0.7(expo@56.0.22)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
       expo-linking:
         specifier: ~56.0.14
         version: 56.0.18(expo@56.0.22)(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
@@ -494,8 +503,14 @@ packages:
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
 
+  '@expo-google-fonts/lora@0.4.2':
+    resolution: {integrity: sha512-Bnofh2mIOUKp4KUS48VjaBgug4lQOcw/ftU0NFv5OPtiutL422//G1v63xDZEMUEL6ft4fi5q94/uKcpDjbPag==}
+
   '@expo-google-fonts/material-symbols@0.4.48':
     resolution: {integrity: sha512-aZztj44PyA/sj3TXSwwpLJwqMlTUJ49okbZJYURzEcuERxMQB0KbX7RrLBi8WJnuWz5HFOLlTRxORrJfNnUPNQ==}
+
+  '@expo-google-fonts/public-sans@0.4.2':
+    resolution: {integrity: sha512-sIUyE7yXUHw6asSN6lXfcxNHl/EIyKl3EMKTgwDaY/1lTTP/9ZHYMYGwGS5XfEGQ/zgMUOjnzA7qlN9DJkctAw==}
 
   '@expo/cli@56.1.26':
     resolution: {integrity: sha512-l0++HkmC4ka2/RwB2Kdti2G6MNM1safxfip7i/Nuuw1sjeFqsjZ8OMjdKV127Lgznjaxep7Y/ElYlC6jxs+Faw==}
@@ -3815,7 +3830,11 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
+  '@expo-google-fonts/lora@0.4.2': {}
+
   '@expo-google-fonts/material-symbols@0.4.48': {}
+
+  '@expo-google-fonts/public-sans@0.4.2': {}
 
   '@expo/cli@56.1.26(@expo/dom-webview@56.0.6)(@expo/metro-runtime@56.0.21)(expo-constants@56.0.26)(expo-font@56.0.7)(expo-router@56.2.21)(expo@56.0.22)(react-dom@19.2.3(react@19.2.3))(react-native@0.85.3(@babel/core@7.29.7)(@react-native/metro-config@0.85.3(@babel/core@7.29.7))(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)(typescript@6.0.3)':
     dependencies:
@@ -4577,9 +4596,7 @@ snapshots:
       metro-runtime: 0.84.6
     transitivePeerDependencies:
       - '@babel/core'
-      - bufferutil
       - supports-color
-      - utf-8-validate
 
   '@react-native/normalize-colors@0.74.89': {}
 

@@ -7,6 +7,18 @@ module.exports = {
   presets: [require('nativewind/preset')],
   theme: {
     extend: {
+      fontFamily: {
+        // Public Sans (font) y Lora (heading), del preset de shadcn/create.
+        // En React Native cada peso es una familia distinta, por eso hay una clase por peso.
+        sans: ['PublicSans_400Regular'],
+        'sans-medium': ['PublicSans_500Medium'],
+        'sans-semibold': ['PublicSans_600SemiBold'],
+        'sans-bold': ['PublicSans_700Bold'],
+        heading: ['Lora_400Regular'],
+        'heading-medium': ['Lora_500Medium'],
+        'heading-semibold': ['Lora_600SemiBold'],
+        'heading-bold': ['Lora_700Bold'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
@@ -40,6 +52,13 @@ module.exports = {
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
+        },
+        chart: {
+          1: 'hsl(var(--chart-1))',
+          2: 'hsl(var(--chart-2))',
+          3: 'hsl(var(--chart-3))',
+          4: 'hsl(var(--chart-4))',
+          5: 'hsl(var(--chart-5))',
         },
       },
       borderRadius: {
