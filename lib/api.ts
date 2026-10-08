@@ -37,12 +37,11 @@ export type ChatResponse = {
   model: string;
 };
 
-/** Manda el historial completo; el server corre el agente y devuelve la respuesta final. */
+
 export function sendChat(messages: ChatMessage[]) {
   return api<ChatResponse>('/api/chat', { method: 'POST', body: JSON.stringify({ messages }) });
 }
 
-/** Subconjunto de la fila de DailyHealthSummary que usa el dashboard. */
 export type DailyHealthSummary = {
   date: string;
   weightKg: number | null;
@@ -57,9 +56,6 @@ export function getHealthDays(from: string, to?: string) {
   return api<DailyHealthSummary[]>(`/api/health/days?${params}`);
 }
 
-// ---------------------------------------------------------------------
-// Comida
-// ---------------------------------------------------------------------
 
 export type MealItem = {
   id: string;
@@ -94,16 +90,13 @@ export type MealTotals = { calories: number; proteinG: number; carbsG: number; f
 
 export type MealsDay = { date: string; meals: Meal[]; totals: MealTotals };
 
-/** Comidas de un día (en la zona horaria del usuario). Sin fecha: hoy. */
+
 export function getMeals(date?: string) {
   const params = date ? `?${new URLSearchParams({ date })}` : '';
   return api<MealsDay>(`/api/meals${params}`);
 }
 
-/**
- * Manda foto (data URL) y/o descripción; el server corre el agente que estima
- * macros y guarda la comida. Devuelve la comida ya creada.
- */
+
 export function analyzeMeal(input: { description?: string; image?: string }) {
   return api<Meal>('/api/meals/analyze', { method: 'POST', body: JSON.stringify(input) });
 }

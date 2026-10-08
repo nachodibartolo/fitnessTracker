@@ -84,7 +84,6 @@ export function LineChart({ title, data, unit, pad = 0.5, decimals = 1 }: Props)
 
   const geom = buildGeom(data, width, pad);
 
-  // Sin dedo encima muestra el último valor; el índice se acota por si cambió la serie.
   const shown = geom
     ? geom.pts[active !== null && active < geom.pts.length ? active : geom.pts.length - 1]
     : undefined;
@@ -107,7 +106,7 @@ export function LineChart({ title, data, unit, pad = 0.5, decimals = 1 }: Props)
       </CardHeader>
 
       <CardContent>
-        {/* Se renderiza siempre: es el que mide el ancho y el que recibe el dedo. */}
+        {}
         <View
           onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}
           onStartShouldSetResponder={() => true}
@@ -119,7 +118,6 @@ export function LineChart({ title, data, unit, pad = 0.5, decimals = 1 }: Props)
           onResponderTerminationRequest={() => false}
           style={{ height: CHART_HEIGHT }}>
           {geom && (
-            // pointerEvents none: los touches son del View, el SVG no los intercepta.
             <Svg width={width} height={CHART_HEIGHT} pointerEvents="none">
               {geom.yTicks.map((t) => (
                 <G key={t.value}>
@@ -151,7 +149,6 @@ export function LineChart({ title, data, unit, pad = 0.5, decimals = 1 }: Props)
                   fill={colors.mutedForeground}
                   fontSize={LABEL_SIZE}
                   fontFamily={FONTS.sans}
-                  // Los extremos se anclan para adentro así no se cortan.
                   textAnchor={i === 0 ? 'start' : i === geom.xTicks.length - 1 ? 'end' : 'middle'}>
                   {formatDayMonth(t.ms)}
                 </SvgText>

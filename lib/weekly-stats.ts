@@ -10,31 +10,24 @@
 type DayLike = { date: string };
 
 export type WeeklyComparison = {
-  /** Promedio de los últimos 7 días. `null` si ninguno tiene dato. */
   current: number | null;
-  /** Promedio de los 7 días anteriores a esos. */
   previous: number | null;
-  /** current - previous. `null` si falta alguno de los dos. */
   delta: number | null;
-  /** delta / previous, en fracción (0.05 = +5%). `null` si no se puede calcular. */
   deltaPct: number | null;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-/** Promedio ignorando `null`. `null` si no quedó ningún valor. */
 export function average(values: (number | null)[]): number | null {
   const nums = values.filter((v): v is number => v !== null);
   if (nums.length === 0) return null;
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-/** Fecha `YYYY-MM-DD` corrida `offset` días. Trabaja en UTC igual que chart-scale. */
 function shiftDate(date: string, offset: number): string {
   return new Date(new Date(date).getTime() + offset * DAY_MS).toISOString().slice(0, 10);
 }
 
-/** Último día (por fecha) con un valor no nulo en `pick`. */
 export function lastDateWithData<T extends DayLike>(
   days: T[],
   pick: (d: T) => number | null
@@ -46,10 +39,6 @@ export function lastDateWithData<T extends DayLike>(
   return last;
 }
 
-/**
- * Compara el promedio de los 7 días que terminan en `anchor` (inclusive)
- * contra el promedio de los 7 anteriores.
- */
 export function compareWeeks<T extends DayLike>(
   days: T[],
   pick: (d: T) => number | null,

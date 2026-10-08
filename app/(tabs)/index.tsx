@@ -19,15 +19,14 @@ export default function Dashboard() {
       .catch((e) => setError(e.message));
   }, []);
 
-  // Saca los días sin pesaje y traduce al formato del gráfico.
+
   const weightPoints = (days ?? []).flatMap((d) =>
     d.weightKg === null ? [] : [{ date: d.date, value: d.weightKg }]
   );
 
-  // Promedio de los últimos 7 días con dato vs. los 7 anteriores. `null` = cargando.
+
   const weight = days && compareWeeks(days, (d) => d.weightKg);
-  const sleep =
-    days && compareWeeks(days, (d) => (d.sleepAsleepMin === null ? null : d.sleepAsleepMin / 60));
+  const sleep = days && compareWeeks(days, (d) => (d.sleepAsleepMin === null ? null : d.sleepAsleepMin / 60));
   const steps = days && compareWeeks(days, (d) => d.steps);
   const energy = days && compareWeeks(days, (d) => d.activeEnergyKcal);
 
