@@ -53,4 +53,4 @@ apple_health_export/
 !.env.example
 
 #Varios
-'The Essentials Program pt2.xlsx'
+*.xlsx

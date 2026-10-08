@@ -7,14 +7,6 @@ export default function TabsLayout() {
         <NativeTabs.Trigger.Label>Dashboard</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="house.fill" md="home" />
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="salud">
-        <NativeTabs.Trigger.Label>Salud</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="heart.fill" md="favorite" />
-      </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="entrenamiento">
-        <NativeTabs.Trigger.Label>Entreno</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon sf="figure.strengthtraining.traditional" md="fitness_center" />
-      </NativeTabs.Trigger>
       <NativeTabs.Trigger name="comida">
         <NativeTabs.Trigger.Label>Comida</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon sf="fork.knife" md="restaurant" />

@@ -163,6 +163,38 @@ export const tools = {
       };
     },
   }),
+
+  get_meals: tool({
+    description:
+      'Comidas registradas por el usuario (nombre, tipo, calorías, proteína, carbohidratos, grasas, fibra) ' +
+      'con sus items. Sirve para calcular ingesta diaria y compararla con los objetivos. Máximo 100 por llamada.',
+    params: dateRange,
+    run: async (userId, args) => {
+      const { from, to } = resolveRange(args, 7);
+      const rows = await prisma.meal.findMany({
+        where: { userId, eatenAt: { gte: from, lte: to } },
+        orderBy: { eatenAt: 'desc' },
+        take: 101,
+        include: { items: { orderBy: { order: 'asc' }, select: { name: true, quantity: true, unit: true, calories: true } } },
+      });
+      return {
+        truncated: rows.length > 100,
+        meals: rows.slice(0, 100).map((m) =>
+          compact({
+            eatenAt: m.eatenAt,
+            name: m.name,
+            mealType: m.mealType,
+            calories: m.calories,
+            proteinG: m.proteinG,
+            carbsG: m.carbsG,
+            fatG: m.fatG,
+            fiberG: m.fiberG,
+            items: m.items.map(compact),
+          })
+        ),
+      };
+    },
+  }),
 };
 
 export type ToolName = keyof typeof tools;

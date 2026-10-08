@@ -1,4 +1,6 @@
 import { Icon } from '@/components/ui/icon';
+import { Markdown } from '@/components/ui/markdown';
+import { ScreenHeader } from '@/components/ui/screen-header';
 import { Text } from '@/components/ui/text';
 import { sendChat, type ChatMessage } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -7,6 +9,7 @@ import * as React from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +20,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Bubble = ChatMessage & { id: string; error?: boolean; toolCalls?: string[] };
 
+// Alto aproximado del tab bar nativo flotante: con el teclado cerrado, la barra
+// de input se levanta esa distancia para que no quede tapada.
+const TAB_BAR_HEIGHT = 60;
+
 const SUGERENCIAS = [
   '¿Cómo vengo durmiendo esta semana?',
   '¿Cuántos entrenamientos hice este mes?',
@@ -25,10 +32,26 @@ const SUGERENCIAS = [
 
 export default function ChatScreen() {
   const insets = useSafeAreaInsets();
+  const [keyboardOpen, setKeyboardOpen] = React.useState(false);
   const listRef = React.useRef<FlatList<Bubble>>(null);
   const [messages, setMessages] = React.useState<Bubble[]>([]);
   const [input, setInput] = React.useState('');
   const [sending, setSending] = React.useState(false);
+
+  React.useEffect(() => {
+    const show = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setKeyboardOpen(true)
+    );
+    const hide = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setKeyboardOpen(false)
+    );
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
 
   async function send(text: string) {
     const content = text.trim();
@@ -70,11 +93,8 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView
       className="flex-1 bg-background"
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ paddingTop: insets.top }}>
-      <View className="border-b border-border px-4 pb-3 pt-2">
-        <Text variant="h3">Chat</Text>
-      </View>
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScreenHeader title="Chat" />
 
       <FlatList
         ref={listRef}
@@ -112,13 +132,17 @@ export default function ChatScreen() {
               item.role === 'user' ? 'self-end bg-primary' : 'self-start bg-muted',
               item.error && 'bg-destructive/15'
             )}>
-            <Text
-              className={cn(
-                item.role === 'user' && 'text-primary-foreground',
-                item.error && 'text-destructive'
-              )}>
-              {item.content}
-            </Text>
+            {item.role === 'assistant' && !item.error ? (
+              <Markdown>{item.content}</Markdown>
+            ) : (
+              <Text
+                className={cn(
+                  item.role === 'user' && 'text-primary-foreground',
+                  item.error && 'text-destructive'
+                )}>
+                {item.content}
+              </Text>
+            )}
             {item.toolCalls && item.toolCalls.length > 0 ? (
               <Text variant="muted" className="mt-2 text-xs">
                 tools: {item.toolCalls.join(', ')}
@@ -130,7 +154,9 @@ export default function ChatScreen() {
 
       <View
         className="flex-row items-end gap-2 border-t border-border px-3 pt-2"
-        style={{ paddingBottom: Math.max(insets.bottom, 8) }}>
+        style={{
+          paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 8) + TAB_BAR_HEIGHT,
+        }}>
         <TextInput
           className="max-h-32 flex-1 rounded-2xl border border-input bg-background px-4 py-2.5 font-sans text-base text-foreground placeholder:text-muted-foreground"
           placeholder="Escribí tu pregunta…"

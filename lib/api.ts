@@ -25,6 +25,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     }
     throw new Error(message);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
 }
 
@@ -39,4 +40,74 @@ export type ChatResponse = {
 /** Manda el historial completo; el server corre el agente y devuelve la respuesta final. */
 export function sendChat(messages: ChatMessage[]) {
   return api<ChatResponse>('/api/chat', { method: 'POST', body: JSON.stringify({ messages }) });
+}
+
+/** Subconjunto de la fila de DailyHealthSummary que usa el dashboard. */
+export type DailyHealthSummary = {
+  date: string;
+  weightKg: number | null;
+  steps: number | null;
+  sleepAsleepMin: number | null;
+  activeEnergyKcal: number | null;
+};
+
+export function getHealthDays(from: string, to?: string) {
+  const params = new URLSearchParams({ from });
+  if (to) params.set('to', to);
+  return api<DailyHealthSummary[]>(`/api/health/days?${params}`);
+}
+
+// ---------------------------------------------------------------------
+// Comida
+// ---------------------------------------------------------------------
+
+export type MealItem = {
+  id: string;
+  order: number;
+  name: string;
+  quantity: number | null;
+  unit: string | null;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  fiberG: number | null;
+};
+
+export type Meal = {
+  id: string;
+  eatenAt: string;
+  mealType: 'BREAKFAST' | 'LUNCH' | 'DINNER' | 'SNACK' | null;
+  name: string;
+  calories: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+  fiberG: number | null;
+  source: 'MANUAL' | 'AI_IMAGE' | 'AI_TEXT';
+  aiConfidence: number | null;
+  notes: string | null;
+  items: MealItem[];
+};
+
+export type MealTotals = { calories: number; proteinG: number; carbsG: number; fatG: number };
+
+export type MealsDay = { date: string; meals: Meal[]; totals: MealTotals };
+
+/** Comidas de un día (en la zona horaria del usuario). Sin fecha: hoy. */
+export function getMeals(date?: string) {
+  const params = date ? `?${new URLSearchParams({ date })}` : '';
+  return api<MealsDay>(`/api/meals${params}`);
+}
+
+/**
+ * Manda foto (data URL) y/o descripción; el server corre el agente que estima
+ * macros y guarda la comida. Devuelve la comida ya creada.
+ */
+export function analyzeMeal(input: { description?: string; image?: string }) {
+  return api<Meal>('/api/meals/analyze', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function deleteMeal(id: string) {
+  return api<void>(`/api/meals/${id}`, { method: 'DELETE' });
 }
