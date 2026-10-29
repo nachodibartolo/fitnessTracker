@@ -21,7 +21,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
       const body = await res.json();
       if (body?.error) message = body.error;
     } catch {
-      // sin body JSON: queda el status
+      //
     }
     throw new Error(message);
   }
