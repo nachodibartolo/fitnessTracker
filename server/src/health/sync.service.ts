@@ -23,8 +23,8 @@ async function inChunks<T>(items: T[], size: number, fn: (item: T) => Promise<un
  * - APPLE_HEALTH_XML: reemplaza. Se borran los imports anteriores de ese canal
  *   (cascade → sus HealthSample) antes de insertar los nuevos.
  * - HEALTHKIT: incremental, solo upsertea lo que vino.
- * Días y workouts siempre se upsertean por clave natural, así los ids (y el
- * vínculo Workout ↔ TrainingSession) sobreviven a un re-import.
+ * Días y workouts siempre se upsertean por clave natural, así los ids
+ * sobreviven a un re-import.
  */
 export async function syncHealth(
   userId: string,

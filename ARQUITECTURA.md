@@ -8,7 +8,7 @@ Resumen de las decisiones técnicas del proyecto, para discutir con la cátedra.
 flowchart LR
   App[App móvil\nExpo + React Native] -->|HTTP/JSON| API[API REST\nExpress + Node.js]
   API -->|Prisma ORM| DB[(PostgreSQL\nSupabase)]
-  API -->|tools de solo lectura| Agente[Agente IA\nClaude API]
+  API -->|tools de solo lectura| Agente[Agente IA\nOpenRouter]
   Agente -->|consultas vía tools| API
 ```
 
@@ -43,8 +43,8 @@ flowchart LR
 ### Base de datos
 
 - **PostgreSQL alojado en Supabase** (plan gratuito). Se usa solo como Postgres; no se usan Auth, Storage ni Realtime de Supabase.
-- Elección frente a NoSQL: los datos son relacionales (usuarios, entrenamientos, ejercicios, series, comidas, alimentos, métricas por fecha) y SQL es más simple de consultar tanto para la API como para el agente. La cátedra confirmó que el requisito es el ORM Prisma, no el motor.
-- El esquema está en `server/prisma/schema.prisma`, en cuatro grupos: usuarios; salud (`HealthImport`, `DailyHealthSummary`, `Workout`, `HealthSample`); entrenamiento (`Program` → `ProgramBlock` → `ProgramDay` → `ProgramExercise`, y lo realizado en `TrainingSession` → `SessionExercise` → `ExerciseSet`, con catálogo `Exercise`); comida (`Meal`, `MealItem`).
+- Elección frente a NoSQL: los datos son relacionales (usuarios, días de salud, entrenamientos del reloj, comidas, alimentos) y SQL es más simple de consultar tanto para la API como para el agente. La cátedra confirmó que el requisito es el ORM Prisma, no el motor.
+- El esquema está en `server/prisma/schema.prisma`, en tres grupos: usuarios y sesiones (`User`, `AuthSession`); salud (`HealthImport`, `DailyHealthSummary`, `Workout`, `HealthSample`); comida (`Meal`, `MealItem`).
 - Salud es un modelo híbrido: lo crudo de Apple Health (cientos de miles de muestras de frecuencia cardíaca, pasos, sueño) se queda en el teléfono; al servidor sube una fila por usuario y día (`DailyHealthSummary`), los entrenamientos del reloj (`Workout`) y algunas mediciones puntuales de pocas filas (peso, HRV, FC en reposo). Hay una sola ruta de ingesta con ese payload y dos productores: hoy el servidor, que parsea el `export.xml` subido en streaming y acumula por día; a futuro la app, que consulta las estadísticas diarias de HealthKit y manda lo mismo.
 
 ### Agente de IA
@@ -55,7 +55,7 @@ flowchart LR
   1. Express arma el prompt de sistema (fecha de hoy, perfil del usuario, rango de datos cargados) y manda `system + historial + tools` al modelo.
   2. Si el modelo responde con `tool_calls`, Express ejecuta cada tool (consulta Prisma filtrada por el usuario), agrega el resultado como mensaje `tool` y vuelve a llamar al modelo. Máximo 6 vueltas por mensaje.
   3. Cuando el modelo responde con texto, se devuelve a la app junto con la lista de tools usadas.
-- Tools disponibles (`tools.ts`): `get_daily_health` (resumen diario), `get_workouts` (entrenamientos del reloj), `get_measurements` (peso, HRV, FC en reposo, etc. por métrica) y `get_training_sessions` (sesiones de gym con series). Los parámetros se declaran con Zod y de ahí sale el JSON Schema que ve el modelo; el mismo esquema valida los argumentos que el modelo manda.
+- Tools disponibles (`tools.ts`): `get_daily_health` (resumen diario), `get_workouts` (entrenamientos del reloj), `get_measurements` (peso, HRV, FC en reposo, etc. por métrica) y `get_meals` (comidas registradas con sus items). Los parámetros se declaran con Zod y de ahí sale el JSON Schema que ve el modelo; el mismo esquema valida los argumentos que el modelo manda.
 - El modelo nunca genera SQL ni accede a la base directamente. Esto acota el riesgo y hace auditables las consultas. Los resultados van recortados (sin nulls ni ids, con tope de filas por llamada) para no gastar contexto.
 - Sin streaming ni persistencia de conversaciones por ahora: el historial vive en el estado de la pantalla.
 

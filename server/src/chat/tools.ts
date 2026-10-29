@@ -117,53 +117,6 @@ export const tools = {
     },
   }),
 
-  get_training_sessions: tool({
-    description:
-      'Sesiones de gimnasio anotadas por el usuario, con ejercicios y series (peso en kg, reps, RPE). ' +
-      'Distinto de get_workouts: acá está lo que se levantó, no lo que midió el reloj. Máximo 30 por llamada.',
-    params: dateRange,
-    run: async (userId, args) => {
-      const { from, to } = resolveRange(args, 30);
-      const rows = await prisma.trainingSession.findMany({
-        where: { userId, performedAt: { gte: from, lte: to } },
-        orderBy: { performedAt: 'desc' },
-        take: 30,
-        include: {
-          programDay: { select: { name: true } },
-          exercises: {
-            orderBy: { order: 'asc' },
-            include: {
-              exercise: { select: { name: true } },
-              sets: { orderBy: [{ setNumber: 'asc' }, { dropIndex: 'asc' }] },
-            },
-          },
-        },
-      });
-      return {
-        sessions: rows.map((s) => ({
-          performedAt: s.performedAt,
-          day: s.programDay?.name ?? s.title,
-          week: s.weekNumber,
-          durationMin: s.durationMin,
-          notes: s.notes,
-          exercises: s.exercises.map((e) => ({
-            name: e.exercise.name,
-            notes: e.notes,
-            sets: e.sets.map((st) =>
-              compact({
-                weightKg: st.weightKg,
-                reps: st.reps,
-                rpe: st.rpe,
-                drop: st.dropIndex || null,
-                warmup: st.isWarmup || null,
-              })
-            ),
-          })),
-        })),
-      };
-    },
-  }),
-
   get_meals: tool({
     description:
       'Comidas registradas por el usuario (nombre, tipo, calorías, proteína, carbohidratos, grasas, fibra) ' +
