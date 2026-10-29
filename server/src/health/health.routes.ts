@@ -30,6 +30,14 @@ healthRouter.post('/import', async (req, res) => {
   res.json({ import: result, stats });
 });
 
+healthRouter.get('/last-sync', async (_req, res) => {
+  const ultimo = await prisma.healthImport.findFirst({
+    where: { userId: userId(res), channel: 'HEALTHKIT', status: 'DONE' },
+    orderBy: { finishedAt: 'desc' },
+  });
+  res.json({ rangeTo: ultimo?.rangeTo ? fromDbDate(ultimo.rangeTo) : null });
+});
+
 const rangeQuery = z.object({
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
@@ -71,4 +79,24 @@ healthRouter.get('/imports', async (_req, res) => {
     orderBy: { startedAt: 'desc' },
   });
   res.json(imports);
+});
+
+const dayPatchBody = z.object({
+  weightKg: z.number().min(20).max(400).optional(),
+  bodyFatPct: z.number().min(0).max(1).optional(),
+  sleepAsleepMin: z.number().int().min(0).max(1440).optional(),
+});
+
+healthRouter.patch('/days/:date', async (req, res) => {
+  const date = z.iso.date().parse(req.params.date);
+  const data = dayPatchBody.parse(req.body);
+  const uid = userId(res);
+
+  const day = await prisma.dailyHealthSummary.upsert({
+    where: { userId_date: { userId: uid, date: toDbDate(date) } },
+    create: { userId: uid, date: toDbDate(date), ...data },
+    update: data,
+  });
+
+  res.json({ ...day, date: fromDbDate(day.date) });
 });

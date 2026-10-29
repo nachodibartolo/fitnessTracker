@@ -4,7 +4,8 @@ App móvil de seguimiento de salud, entrenamiento y comida, con un agente de IA 
 
 - **App:** Expo SDK 57 + React Native, Expo Router, NativeWind, React Native Reusables.
 - **API:** Express 5 + TypeScript, Prisma 7.
-- **Base:** PostgreSQL en Supabase.
+- **Base:** PostgreSQL (alojada en Supabase, solo como base de datos).
+- **Auth:** propia. Email + contraseña con hash scrypt, sesiones con token en la tabla `AuthSession`, token guardado en `expo-secure-store`.
 
 La arquitectura y las decisiones técnicas están en [ARQUITECTURA.md](./ARQUITECTURA.md).
 
@@ -12,7 +13,7 @@ La arquitectura y las decisiones técnicas están en [ARQUITECTURA.md](./ARQUITE
 
 - Node.js 20 o superior y **pnpm** (`npm i -g pnpm`).
 - Xcode con el simulador de iOS, o Android Studio con un emulador. La app usa pestañas nativas y **no corre en Expo Go**.
-- Un proyecto en [Supabase](https://supabase.com) (plan gratuito).
+- Un proyecto en [Supabase](https://supabase.com) (plan gratuito) solo para la base PostgreSQL. La autenticación no usa Supabase Auth.
 
 ## Levantar todo en local
 
@@ -77,7 +78,7 @@ cp .env.example .env
 
 - **Simulador de iOS:** `EXPO_PUBLIC_API_URL=http://localhost:3000`
 - **Celular físico:** tiene que estar en el mismo WiFi que la computadora y apuntar a su IP local, por ejemplo `http://192.168.0.15:3000`. La IP la ves con `ipconfig getifaddr en0` en macOS.
-- `EXPO_PUBLIC_USER_ID`: mientras no hay login, la app manda este UUID fijo en el header `x-user-id`. Tiene que ser el mismo con el que se importaron los datos (el que usaste en el `curl` a `/api/health/import`).
+- La app pide login al abrir. Creá una cuenta desde la pantalla de login (o con `POST /api/auth/register`) y usá ese token para importar datos.
 
 ### 5. Compilar y correr la app
 
@@ -102,7 +103,7 @@ Con la API levantada y `OPENROUTER_API_KEY` configurada:
 ```bash
 curl -X POST http://localhost:3000/api/chat \
   -H 'Content-Type: application/json' \
-  -H 'x-user-id: <tu uuid>' \
+  -H 'Authorization: Bearer <token>' \
   -d '{"messages":[{"role":"user","content":"¿Cómo dormí esta semana?"}]}'
 # {"reply":"...","toolCalls":[{"name":"get_daily_health","args":"{...}"}],"model":"..."}
 ```
@@ -137,7 +138,7 @@ fitnessTracker/
 │   ├── _layout.tsx     # layout raíz: fuentes, tema, Stack
 │   └── (tabs)/         # index (dashboard), salud, entrenamiento, comida, chat
 ├── components/         # componentes de UI
-├── lib/api.ts          # cliente de la API (URL + header x-user-id)
+├── lib/api.ts          # cliente de la API (URL + header Authorization con el token)
 ├── server/             # API Express
 │   ├── src/index.ts
 │   ├── src/health/     # ingesta y consulta de Apple Health

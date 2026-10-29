@@ -24,7 +24,7 @@ export function average(values: (number | null)[]): number | null {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
-function shiftDate(date: string, offset: number): string {
+export function shiftDate(date: string, offset: number): string {
   return new Date(new Date(date).getTime() + offset * DAY_MS).toISOString().slice(0, 10);
 }
 

@@ -43,6 +43,15 @@
           "photosPermission": "La app usa tus fotos para estimar las calorías de tus comidas.",
           "cameraPermission": "La app usa la cámara para sacarle una foto a tu comida y estimar sus calorías."
         }
+      ],
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "La app lee tus pasos, calorías, frecuencia cardíaca en reposo y peso de Apple Health para mostrarlos en tu panel.",
+          "NSHealthUpdateUsageDescription": false
+        }
       ]
     ],
     "experiments": {

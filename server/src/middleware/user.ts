@@ -1,24 +1,23 @@
 import type { NextFunction, Request, Response } from 'express';
 import { prisma } from '../lib/prisma.js';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Identificación provisoria hasta que haya login: la app manda un UUID
- * por dispositivo en el header `x-user-id`. Si el usuario no existe, se crea.
- * El id queda en `res.locals.userId` para los handlers.
- */
 export async function requireUser(req: Request, res: Response, next: NextFunction) {
-  const id = req.header('x-user-id');
-  if (!id || !UUID_RE.test(id)) {
-    res.status(401).json({ error: 'Falta el header x-user-id (UUID)' });
-    return;
-  }
-  await prisma.user.upsert({ where: { id }, create: { id }, update: {} });
-  res.locals.userId = id;
-  next();
+   const token = req.header('authorization')?.replace(/^Bearer /i, '');
+   if (!token) {
+      res.status(401).json({ error: 'Falta Authorization: Bearer <token>' });
+      return;
+   }
+
+   const session = await prisma.authSession.findUnique({ where: { token } });
+   if (!session || session.expiresAt < new Date()) {
+      res.status(401).json({ error: 'Sesión inválida o vencida' });
+      return;
+   }
+
+   res.locals.userId = session.userId;
+   next();
 }
 
 export function userId(res: Response): string {
-  return res.locals.userId as string;
+   return res.locals.userId as string;
 }

@@ -36,7 +36,7 @@ flowchart LR
 - Middlewares previstos: parseo JSON, CORS, autenticación, validación de bodies con Zod y manejo centralizado de errores.
 - **Prisma 7** como ORM. La conexión se configura en `prisma.config.ts`; el cliente se genera en `src/generated` y usa el adaptador `@prisma/adapter-pg`.
 - Endpoint de salud `GET /health` que verifica la conexión a la base.
-- Identificación provisoria: header `x-user-id` (UUID generado por la app por dispositivo); el middleware crea el usuario si no existe. Se reemplaza por auth real más adelante sin cambiar el id.
+- Autenticación propia: `POST /api/auth/register|login` devuelven un token aleatorio guardado en la tabla `AuthSession` (30 días). La app lo guarda en `expo-secure-store` y lo manda en `Authorization: Bearer <token>`; el middleware `requireUser` busca la sesión y deja `userId` en `res.locals`. Contraseñas con hash scrypt (`node:crypto`), nunca en texto plano.
 - Rutas de salud bajo `/api/health`: `POST /sync` (payload de días + workouts + mediciones, lo que va a mandar la app desde HealthKit), `POST /import` (el `export.xml` crudo en el body; se parsea en streaming y entra por el mismo servicio), `GET /days`, `GET /workouts`, `GET /imports`.
 - Ruta del agente: `POST /api/chat` recibe el historial de la conversación (`messages: [{role, content}]`) y devuelve `{ reply, toolCalls, model }`.
 
@@ -78,7 +78,7 @@ fitnessTracker/
 │   ├── _layout.tsx     # layout raíz: fuentes, tema, Stack
 │   └── (tabs)/         # pestañas: index (dashboard), salud, entrenamiento, comida, chat
 ├── components/         # componentes de UI
-├── lib/api.ts          # cliente de la API (URL + header x-user-id)
+├── lib/api.ts          # cliente de la API (URL + header Authorization con el token)
 ├── server/             # API Express
 │   ├── src/index.ts    # entrada del servidor
 │   ├── src/health/     # ingesta (sync / import de Apple Health) y consultas

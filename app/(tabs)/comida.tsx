@@ -1,23 +1,37 @@
+import { AddEntrySheet, type EntryField, type EntryValues } from '@/components/ui/add-entry-sheet';
 import { Card } from '@/components/ui/card';
 import { Icon } from '@/components/ui/icon';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
-import { analyzeMeal, deleteMeal, getMeals, type Meal, type MealsDay } from '@/lib/api';
+import {
+  analyzeMeal,
+  createMeal,
+  deleteMeal,
+  getMe,
+  getMeals,
+  getRecentMeals,
+  type Me,
+  type Meal,
+  type MealInput,
+  type MealsDay,
+  type MealsGroup,
+} from '@/lib/api';
 import { cn } from '@/lib/utils';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, ImagePlus, Plus, Sparkles, X } from 'lucide-react-native';
+import { useFocusEffect } from 'expo-router';
+import { Camera, ImagePlus, Sparkles, X } from 'lucide-react-native';
 import * as React from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   RefreshControl,
+  SectionList,
   TextInput,
   View,
 } from 'react-native';
@@ -36,17 +50,37 @@ const kcal = (v: number | null | undefined) =>
   v === null || v === undefined ? '—' : Math.round(v).toLocaleString('es-AR');
 const hora = (iso: string) =>
   new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+const fecha = (iso: string) =>
+  new Date(`${iso}T12:00:00`).toLocaleDateString('es-AR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+  });
+
+const MANUAL_FIELDS: EntryField[] = [
+  { key: 'name', label: 'Qué comiste', type: 'text', placeholder: 'Milanesa con puré' },
+  { key: 'calories', label: 'Calorías', type: 'number', unit: 'kcal', optional: true },
+  { key: 'proteinG', label: 'Proteína', type: 'number', unit: 'g', optional: true },
+  { key: 'fatG', label: 'Grasas', type: 'number', unit: 'g', optional: true },
+  { key: 'carbsG', label: 'Carbs', type: 'number', unit: 'g', optional: true },
+];
 
 export default function ComidaScreen() {
-  const insets = useSafeAreaInsets();
   const [day, setDay] = React.useState<MealsDay | null>(null);
+  const [history, setHistory] = React.useState<MealsGroup[]>([]);
+  const [me, setMe] = React.useState<Me | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [refreshing, setRefreshing] = React.useState(false);
-  const [adding, setAdding] = React.useState(false);
+  const [addingAi, setAddingAi] = React.useState(false);
+  const [addingManual, setAddingManual] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     try {
-      setDay(await getMeals());
+      const [d, h] = await Promise.all([getMeals(), getRecentMeals(8)]);
+      setDay(d);
+      setHistory(h);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error desconocido');
@@ -57,10 +91,45 @@ export default function ComidaScreen() {
     load();
   }, [load]);
 
+  useFocusEffect(
+    React.useCallback(() => {
+      getMe()
+        .then(setMe)
+        .catch(() => {});
+    }, [])
+  );
+
   async function refresh() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  }
+
+  function chooseHow() {
+    Alert.alert('Agregar comida', '¿Cómo la querés cargar?', [
+      { text: 'Manual', onPress: () => setAddingManual(true) },
+      { text: 'Con IA', onPress: () => setAddingAi(true) },
+      { text: 'Cancelar', style: 'cancel' },
+    ]);
+  }
+
+  async function handleManualSave(values: EntryValues) {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const input: MealInput = { name: String(values.name) };
+      if (values.calories !== undefined) input.calories = Number(values.calories);
+      if (values.proteinG !== undefined) input.proteinG = Number(values.proteinG);
+      if (values.fatG !== undefined) input.fatG = Number(values.fatG);
+      if (values.carbsG !== undefined) input.carbsG = Number(values.carbsG);
+      await createMeal(input);
+      setAddingManual(false);
+      await load();
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Error desconocido');
+    } finally {
+      setSaving(false);
+    }
   }
 
   function confirmDelete(meal: Meal) {
@@ -81,46 +150,62 @@ export default function ComidaScreen() {
     ]);
   }
 
+  const sections = [
+    { title: 'Hoy', data: day?.meals ?? [] },
+    ...history.map((g) => ({ title: fecha(g.date), data: g.meals })),
+  ];
+
   return (
     <View className="flex-1 bg-background">
-      <ScreenHeader title="Comida" />
-      <FlatList
-        data={day?.meals ?? []}
+      <ScreenHeader title="Comida" onAdd={chooseHow} />
+      <SectionList
+        sections={sections}
         keyExtractor={(m) => m.id}
-        contentContainerClassName="gap-3 px-4 pb-28 pt-4"
+        stickySectionHeadersEnabled={false}
+        contentContainerClassName="gap-3 px-4 py-4"
+        contentInsetAdjustmentBehavior="automatic"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
         ListHeaderComponent={
           <View className="mb-1 gap-4">
-            <Totals day={day} />
+            <Totals day={day} me={me} />
             {error ? <Text className="text-destructive">Error: {error}</Text> : null}
-            <Text variant="h4">Hoy</Text>
           </View>
         }
-        ListEmptyComponent={
-          day === null && !error ? (
-            <View className="gap-3">
-              <Skeleton className="h-20" />
-              <Skeleton className="h-20" />
-            </View>
-          ) : (
-            <Text variant="muted">Todavía no registraste comidas hoy.</Text>
-          )
-        }
+        renderSectionHeader={({ section }) => (
+          <Text variant="h4" className="mt-2 capitalize">
+            {section.title}
+          </Text>
+        )}
+        renderSectionFooter={({ section }) => {
+          if (section.title !== 'Hoy' || section.data.length > 0) return null;
+          if (day === null && !error) {
+            return (
+              <View className="gap-3">
+                <Skeleton className="h-20" />
+                <Skeleton className="h-20" />
+              </View>
+            );
+          }
+          return <Text variant="muted">Todavía no registraste comidas hoy.</Text>;
+        }}
         renderItem={({ item }) => <MealRow meal={item} onLongPress={() => confirmDelete(item)} />}
       />
 
-      <Pressable
-        onPress={() => setAdding(true)}
-        className="absolute right-5 h-14 w-14 items-center justify-center rounded-full bg-primary shadow-lg shadow-black/20 active:bg-primary/90"
-        style={{ bottom: insets.bottom + 16 }}>
-        <Icon as={Plus} size={26} className="text-primary-foreground" />
-      </Pressable>
+      <AddEntrySheet
+        visible={addingManual}
+        title="Comida manual"
+        fields={MANUAL_FIELDS}
+        saving={saving}
+        error={saveError}
+        onSave={handleManualSave}
+        onClose={() => setAddingManual(false)}
+      />
 
       <AddMealModal
-        visible={adding}
-        onClose={() => setAdding(false)}
+        visible={addingAi}
+        onClose={() => setAddingAi(false)}
         onSaved={() => {
-          setAdding(false);
+          setAddingAi(false);
           load();
         }}
       />
@@ -130,13 +215,24 @@ export default function ComidaScreen() {
 
 // ---------------------------------------------------------------------
 
-function Totals({ day }: { day: MealsDay | null }) {
+function Totals({ day, me }: { day: MealsDay | null; me: Me | null }) {
   const t = day?.totals;
-  const cells: { label: string; value: string }[] = [
-    { label: 'Calorías', value: t ? kcal(t.calories) : '' },
-    { label: 'Proteína', value: t ? g(t.proteinG) : '' },
-    { label: 'Carbs', value: t ? g(t.carbsG) : '' },
-    { label: 'Grasas', value: t ? g(t.fatG) : '' },
+  const kcalTarget = me?.dailyKcalTarget ?? null;
+  const proteinTarget = me?.dailyProteinTarget ?? null;
+  const hasTargets = kcalTarget !== null || proteinTarget !== null;
+  const cells: { label: string; value: string; target: string | null }[] = [
+    {
+      label: 'Calorías',
+      value: t ? kcal(t.calories) : '',
+      target: kcalTarget === null ? null : `/ ${kcal(kcalTarget)}`,
+    },
+    {
+      label: 'Proteína',
+      value: t ? g(t.proteinG) : '',
+      target: proteinTarget === null ? null : `/ ${g(proteinTarget)}`,
+    },
+    { label: 'Carbs', value: t ? g(t.carbsG) : '', target: null },
+    { label: 'Grasas', value: t ? g(t.fatG) : '', target: null },
   ];
   return (
     <Card className="flex-row gap-0 px-2 py-4">
@@ -145,12 +241,19 @@ function Totals({ day }: { day: MealsDay | null }) {
           key={c.label}
           className={cn('flex-1 items-center gap-1', i > 0 && 'border-l border-border')}>
           <Text variant="muted">{c.label}</Text>
-          {t ? (
-            <Text className={cn('font-sans-semibold', i === 0 ? 'text-2xl' : 'text-xl')}>
-              {c.value}
+          <View className="h-8 justify-center">
+            {t ? (
+              <Text className={cn('font-sans-semibold', i === 0 ? 'text-2xl' : 'text-xl')}>
+                {c.value}
+              </Text>
+            ) : (
+              <Skeleton className="h-7 w-14" />
+            )}
+          </View>
+          {hasTargets && (
+            <Text variant="muted" className="text-xs">
+              {c.target ?? ' '}
             </Text>
-          ) : (
-            <Skeleton className="h-7 w-14" />
           )}
         </View>
       ))}

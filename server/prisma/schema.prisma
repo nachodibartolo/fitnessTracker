@@ -11,13 +11,13 @@ datasource db {
 // USUARIOS
 // =====================================================================
 
-/// Sin login todavía: la app genera un UUID por dispositivo, lo guarda en
-/// SecureStore y lo manda en el header `x-user-id`. El backend hace upsert.
-/// Cuando se sume autenticación, el `id` se conserva: solo se agrega la
-/// credencial (email + hash, o el id del proveedor) sobre este mismo usuario.
+/// Login propio: email + contraseña. Se guarda solo el hash (scrypt) de la
+/// contraseña, nunca el texto plano. Cada login abre una AuthSession cuyo
+/// token viaja en el header `Authorization: Bearer <token>`.
 model User {
   id                 String     @id @default(uuid(7)) @db.Uuid
   email              String?    @unique
+  passwordHash       String?
   name               String?
   timezone           String     @default("America/Argentina/Buenos_Aires")
   weightUnit         WeightUnit @default(KG)
@@ -36,11 +36,25 @@ model User {
   trainingSessions TrainingSession[]
   meals            Meal[]
   createdExercises Exercise[]
+  authSessions     AuthSession[]
 }
 
 enum WeightUnit {
   KG
   LB
+}
+
+/// Una fila por sesión abierta (login). El token es aleatorio y se borra
+/// al hacer logout; si expiró, el middleware la rechaza.
+model AuthSession {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  token     String   @unique
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
 }
 
 // =====================================================================

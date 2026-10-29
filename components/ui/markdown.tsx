@@ -3,10 +3,7 @@ import { useColorScheme } from 'nativewind';
 import * as React from 'react';
 import MarkdownDisplay from 'react-native-markdown-display';
 
-/**
- * Renderiza Markdown (negritas, listas, tablas, código) con la tipografía
- * y colores del tema. Pensado para las respuestas de la IA en el chat.
- */
+
 export function Markdown({ children, color }: { children: string; color?: string }) {
   const { colorScheme } = useColorScheme();
   const c = THEME[colorScheme ?? 'light'];

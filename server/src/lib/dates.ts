@@ -31,7 +31,12 @@ function tzOffsetMs(at: Date, timeZone: string): number {
   return asUtc - at.getTime();
 }
 
+/** Fecha YYYY-MM-DD de un instante, en la zona horaria dada. */
+export function dateInTz(at: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(at);
+}
+
 /** Fecha YYYY-MM-DD de "hoy" en la zona horaria dada. */
 export function todayInTz(timeZone: string): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+  return dateInTz(new Date(), timeZone);
 }
